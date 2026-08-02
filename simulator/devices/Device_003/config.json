@@ -1,0 +1,17 @@
+{
+    "imei": "112233445566778",
+    "sim": "1111111113",
+    "protocol": "Teltonika",
+    "server_ip": "127.0.0.1",
+    "server_port": 5023,
+    "start_lat": 12.9716,
+    "start_lon": 77.5946,
+    "start_heading": 180,
+    "start_altitude": 920,
+    "device_model": "FMB920",
+    "serial_number": "S789012",
+    "iccid": "",
+    "imsi": "",
+    "external_power_voltage": 12.6,
+    "route": []
+}

@@ -1,0 +1,19 @@
+{
+    "start_lon":  72.5714,
+    "server_ip":  "127.0.0.1",
+    "imsi":  "",
+    "start_lat":  23.0225,
+    "server_port":  5023,
+    "start_heading":  270,
+    "external_power_voltage":  12.6,
+    "serial_number":  "S001007",
+    "sim":  "1111111117",
+    "device_model":  "MVT340",
+    "imei":  "444444444444444",
+    "protocol":  "Meitrack",
+    "start_altitude":  53,
+    "iccid":  "",
+    "route":  [
+
+              ]
+}

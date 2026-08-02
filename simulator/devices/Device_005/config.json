@@ -1,0 +1,19 @@
+{
+    "start_lon":  88.3639,
+    "server_ip":  "127.0.0.1",
+    "imsi":  "",
+    "start_lat":  22.5726,
+    "server_port":  5023,
+    "start_heading":  90,
+    "external_power_voltage":  12.6,
+    "serial_number":  "S001005",
+    "sim":  "1111111115",
+    "device_model":  "GT06",
+    "imei":  "222222222222222",
+    "protocol":  "Coban",
+    "start_altitude":  9,
+    "iccid":  "",
+    "route":  [
+
+              ]
+}

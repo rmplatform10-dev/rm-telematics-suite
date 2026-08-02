@@ -1,0 +1,26 @@
+{
+    "start_lon":  73.8567,
+    "server_ip":  "127.0.0.1",
+    "imsi":  "",
+    "start_lat":  18.5204,
+    "server_port":  5023,
+    "start_heading":  135,
+    "external_power_voltage":  12.6,
+    "serial_number":  "S001008",
+    "sim":  "1111111118",
+    "device_model":  "JC100",
+    "imei":  "555555555555555",
+    "protocol":  "Jimi",
+    "start_altitude":  560,
+    "iccid":  "",
+    "route":  [
+                  {
+                      "lat":  18.5204,
+                      "lon":  73.8567
+                  },
+                  {
+                      "lat":  19.076,
+                      "lon":  72.8777
+                  }
+              ]
+}
