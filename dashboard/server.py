@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """RM Telematics Dashboard Server - serves React build + live API"""
 import http.server
 import json, os, sys, threading, time, urllib.parse
@@ -10,6 +10,13 @@ SHARED_DIR = os.path.join(ROOT_DIR, 'shared')
 DEVICES_DIR = os.path.join(ROOT_DIR, 'simulator', 'devices')
 sys.path.insert(0, SHARED_DIR)
 
+# runtime config loader (optional)
+try:
+    import runtime as rm_runtime
+    RM_CONFIG = rm_runtime.load_config()
+except Exception:
+    RM_CONFIG = {}
+
 import importlib.util
 spec = importlib.util.spec_from_file_location("device_core", os.path.join(SHARED_DIR, "device_core.py"))
 device_core = importlib.util.module_from_spec(spec)
@@ -19,9 +26,12 @@ devices = []
 device_by_imei = {}
 threads = {}
 
+
 def load_devices():
     global devices, device_by_imei
     devices.clear(); device_by_imei.clear()
+    if not os.path.exists(DEVICES_DIR):
+        return
     for folder in sorted(os.listdir(DEVICES_DIR)):
         full = os.path.join(DEVICES_DIR, folder)
         if os.path.isdir(full):
@@ -38,9 +48,12 @@ def load_devices():
                     dev = device_core.GPSDevice(cfg)
                     devices.append(dev)
                     device_by_imei[dev.imei] = dev
-                except Exception as e: print(f"Skipping {folder}: {e}")
+                except Exception as e:
+                    print(f"Skipping {folder}: {e}")
+
 
 load_devices()
+
 
 def start_device(imei):
     if imei in threads: return
@@ -50,15 +63,18 @@ def start_device(imei):
         t.start()
         threads[imei] = t
 
+
 def stop_device(imei):
     if imei not in threads: return
     dev = device_by_imei.get(imei)
     if dev:
         dev.online = False
-        if dev.protocol and dev.protocol.sock:
+        if getattr(dev, 'protocol', None) and getattr(dev.protocol, 'sock', None):
             try: dev.protocol.sock.close()
             except Exception as e: print(f"Error stopping {imei}: {e}")
-    del threads[imei]
+    if imei in threads:
+        del threads[imei]
+
 
 class DashboardHandler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
@@ -93,7 +109,6 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                     'satellites': dev.satellites,
                     'online': dev.online,
                     'active': dev.imei in threads,
-                    # ── React-compatible aliases ──────────────────────────
                     'name': f'{dev.protocol_type}-{str(dev.imei)[-4:]}',
                     'lat': round(dev.latitude, 6),
                     'lng': round(dev.longitude, 6),
@@ -101,8 +116,8 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                     'altitude': getattr(dev, 'altitude', 0),
                     'odometer': round(getattr(dev, 'odometer', 0), 1),
                     'type': getattr(dev, 'device_model', 'Car'),
-                    'ipAddress': dev.server_ip,
-                    'port': dev.server_port,
+                    'ipAddress': getattr(dev, 'server_ip', None),
+                    'port': getattr(dev, 'server_port', None),
                     'driver': None,
                     'destination': None,
                     'temperature': None,
@@ -128,19 +143,18 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
             }
             self.wfile.write(json.dumps(status).encode())
             return
-        # Serve static files; fallback to index.html for SPA
-<<<<<<< HEAD
-=======
         # Also serve a small runtime config for front-end bundles that request /config
         if parsed.path == '/config':
             self.send_response(200)
             self.send_header('Content-Type','application/json')
             self.send_header('Access-Control-Allow-Origin','*')
             self.end_headers()
-            cfg = {'apiBase': 'http://localhost:8080'}
+            api = RM_CONFIG.get('api_base', 'http://localhost:8080') if isinstance(RM_CONFIG, dict) else 'http://localhost:8080'
+            cfg = {'apiBase': api}
             self.wfile.write(json.dumps(cfg).encode())
             return
->>>>>>> c0fe9f2 (chore: deep upgrade — portable dashboard, cleanup/deploy helpers, .gitignore and small runtime config\n\nCo-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>)
+
+        # Serve static files; fallback to index.html for SPA
         path = self.translate_path(parsed.path)
         if not os.path.exists(path) or os.path.isdir(path):
             self.path = '/index.html'
@@ -148,9 +162,13 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
-        content_length = int(self.headers['Content-Length'])
-        body = self.rfile.read(content_length).decode()
-        data = json.loads(body) if body else {}
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(content_length).decode() if content_length else ''
+            data = json.loads(body) if body else {}
+        except Exception:
+            data = {}
+
         if parsed.path == '/api/device/start':
             imei = data.get('imei')
             if imei:
@@ -245,15 +263,15 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
         self.send_response(404)
         self.end_headers()
 
-if __name__ == '__main__':
-    print("Dashboard server starting at http://localhost:8080")
-<<<<<<< HEAD
-=======
-print(f"Serving files from {BASE_DIR}")
-# Provide a simple runtime config endpoint for the SPA to consume (optional)
 
->>>>>>> c0fe9f2 (chore: deep upgrade — portable dashboard, cleanup/deploy helpers, .gitignore and small runtime config\n\nCo-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>)
-    httpd = http.server.HTTPServer(('', 8080), DashboardHandler)
+if __name__ == '__main__':
+    DASHBOARD_HOST = RM_CONFIG.get('dashboard_host', '') if isinstance(RM_CONFIG, dict) else ''
+    DASHBOARD_PORT = int(RM_CONFIG.get('dashboard_port', 8080)) if isinstance(RM_CONFIG, dict) else 8080
+    host_display = DASHBOARD_HOST if DASHBOARD_HOST else 'localhost'
+    print(f"Dashboard server starting at http://{host_display}:{DASHBOARD_PORT}")
+    print(f"Serving files from {BASE_DIR}")
+
+    httpd = http.server.HTTPServer((DASHBOARD_HOST, DASHBOARD_PORT), DashboardHandler)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
