@@ -1,35 +1,208 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>RM Telematics Dashboard</title>
-    <script>
-      (function(){
-        var host = location.hostname;
-        window.RM_CONFIG = { apiBase: (host==='localhost' || host==='127.0.0.1') ? 'http://localhost:8080' : 'https://rm-telematics-suite.web.app' };
-        // Monkey-patch fetch so bundles that call '/api/...' still route to the configured API base when served from the static site
-        if (window.fetch && window.RM_CONFIG && window.RM_CONFIG.apiBase) {
-          var _oldFetch = window.fetch.bind(window);
-          window.fetch = function(input, init){
-            try{
-              var url = (typeof input === 'string') ? input : (input && input.url) || '';
-              if (url && url.indexOf('/api') === 0) {
-                var newUrl = window.RM_CONFIG.apiBase.replace(/\/$/, '') + url;
-                if (typeof input === 'string') return _oldFetch(newUrl, init);
-                var req = new Request(newUrl, input);
-                return _oldFetch(req);
-              }
-            }catch(e){ }
-            return _oldFetch(input, init);
-          };
-        }
-      })();
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>RM Telematics — Live Dashboard</title>
+  <style>
+    :root{--bg:#0d1117;--card:#161b22;--border:#30363d;--text:#c9d9d1;--muted:#8b949e;--accent:#58a6ff;--accent-2:rgba(88,166,255,0.12);--success:#2ea44f;--warn:#ffb84d;--danger:#ff7b72;--mono:'Segoe UI',ui-monospace,SFMono-Regular,Menlo,Monaco,'Roboto Mono','Courier New',monospace}
+    html,body{height:100%;margin:0;font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--text);font-size:14px}
+    *{box-sizing:border-box}
+    .app{display:flex;height:100vh;overflow:hidden}
+    .sidebar{width:220px;background:linear-gradient(180deg,var(--card),#0f1620);border-right:1px solid var(--border);padding:16px;display:flex;flex-direction:column}
+    .logo{font-weight:700;color:var(--accent);margin-bottom:12px}
+    .nav{display:flex;flex-direction:column;gap:8px}
+    .nav button{display:flex;align-items:center;gap:10px;padding:10px;border-radius:8px;border:0;background:transparent;color:var(--muted);cursor:pointer}
+    .nav button.active{background:rgba(88,166,255,0.18);color:var(--accent)}
+    .main{flex:1;display:flex;flex-direction:column}
+    .topbar{height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;border-bottom:1px solid var(--border)}
+    .clock{color:var(--muted)}
+    .content{padding:18px;overflow:auto}
+    .cards{display:flex;gap:12px;margin-bottom:16px}
+    .card{background:var(--card);padding:12px;border-radius:8px;border:1px solid var(--border);flex:1}
+    .card h3{margin:0;color:var(--muted);font-size:12px}
+    .card .value{font-weight:700;font-size:20px;margin-top:6px}
+    .map-wrap{position:relative;height:62vh;border-radius:8px;overflow:hidden}
+    .leaflet-container{height:100%;width:100%}
+    .overlay{position:absolute;left:12px;right:12px;bottom:12px;background:linear-gradient(180deg,rgba(0,0,0,0.35),rgba(0,0,0,0.25));border:1px solid rgba(255,255,255,0.03);backdrop-filter:blur(6px);border-radius:8px;padding:8px;max-height:38vh;overflow:auto}
+    .overlay.collapsed{max-height:44px}
+    .search{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+    .search input{padding:8px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text);width:280px}
+    .row{display:flex;justify-content:space-between;align-items:center;padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.02);margin-bottom:6px}
+    .btn{background:transparent;border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:8px;cursor:pointer}
+    .btn.primary{background:linear-gradient(90deg,var(--accent),#2f86ff);border:0;color:#032243}
+    .btn:disabled{opacity:0.5;cursor:not-allowed}
+    .spin{display:inline-block;width:14px;height:14px;border-radius:50%;border:2px solid rgba(255,255,255,0.08);border-top-color:var(--accent);animation:spin 1s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .drawer{position:fixed;right:0;top:0;width:420px;height:100%;background:var(--card);box-shadow:-20px 0 60px rgba(0,0,0,0.6);transform:translateX(110%);transition:transform .32s;z-index:999}
+    .drawer.open{transform:translateX(0)}
+    .drawer .body{padding:16px}
+    .panel{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px}
+    .monitor{font-family:var(--mono);font-size:13px;max-height:60vh;overflow:auto}
+    .toasts{position:fixed;right:18px;bottom:18px;display:flex;flex-direction:column;gap:8px;z-index:9999}
+    .toast{background:#0b1220;border:1px solid var(--border);padding:10px;border-radius:8px}
+    .flash{animation:flash .7s}
+    @keyframes flash{0%{background:rgba(88,166,255,0.06)}100%{background:transparent}}
+    @media(max-width:900px){.sidebar{width:64px}.logo{text-indent:-9999px}.nav button span{display:none}}
+  </style>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="logo">RM Telematics</div>
+      <nav class="nav" id="nav">
+        <button data-tab="dashboard" class="active">📊 <span>Dashboard</span></button>
+        <button data-tab="devices">📟 <span>Devices</span></button>
+        <button data-tab="sms">✉️ <span>SMS</span></button>
+        <button data-tab="monitor">🖥️ <span>Monitor</span></button>
+        <button data-tab="settings">⚙️ <span>Settings</span></button>
+      </nav>
+      <div class="footer" style="margin-top:auto;color:var(--muted);font-size:12px">Version 1.0 • Local</div>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <div style="font-weight:600">RM Telematics Suite</div>
+        <div style="display:flex;gap:12px;align-items:center">
+          <div class="clock" id="last-updated">Last updated: --:--:--</div>
+          <div class="clock" id="device-count">0 devices</div>
+        </div>
+      </header>
+      <section class="content">
+        <div id="tab-dashboard" class="tab">
+          <div class="cards">
+            <div class="card"><h3>Total Devices</h3><div class="value" id="total">0</div></div>
+            <div class="card"><h3>Active Devices</h3><div class="value" id="active">0</div></div>
+            <div class="card"><h3>Alerts</h3><div class="value" id="alerts">0</div></div>
+          </div>
+          <div class="map-wrap panel">
+            <div id="map" class="leaflet-container"></div>
+            <div class="overlay" id="overlay">
+              <div class="search"><input id="search" placeholder="Search IMEI or SIM" /><div style="margin-left:auto"><button class="btn" id="toggle">Collapse</button></div></div>
+              <div id="rows"></div>
+            </div>
+          </div>
+          <div style="margin-top:12px;display:flex;justify-content:flex-end"><button class="btn primary" id="add">Add Device</button></div>
+        </div>
+        <div id="tab-devices" class="tab" style="display:none">
+          <div class="panel"><h3>Device Management</h3><div id="dev-table"></div></div>
+        </div>
+        <div id="tab-sms" class="tab" style="display:none">
+          <div class="panel" style="display:flex;gap:12px">
+            <div style="flex:1">
+              <div style="display:flex;gap:8px;margin-bottom:8px"><input id="sms-sim" placeholder="SIM" style="width:160px"/><input id="sms-cmd" placeholder="Command"/><button class="btn primary" id="sms-send">Send</button></div>
+              <div id="sms-response" style="min-height:40px;margin-bottom:8px"></div>
+              <div class="sms-history" id="sms-list"></div>
+            </div>
+            <div style="width:320px"><div class="panel"><h4>Quick</h4><button class="btn" id="clear-monitor">Clear Monitor</button></div></div>
+          </div>
+        </div>
+        <div id="tab-monitor" class="tab" style="display:none">
+          <div class="panel monitor" id="monitor"></div>
+        </div>
+        <div id="tab-settings" class="tab" style="display:none">
+          <div class="panel">API Base: <span id="api-base"></span> <button class="btn" id="edit-api">Edit</button></div>
+        </div>
+      </section>
+    </main>
+  </div>
+  <div class="drawer" id="drawer">
+    <div class="body">
+      <h3 id="drawer-title">Add Device</h3>
+      <div style="margin-top:8px">
+        <div style="display:flex;gap:8px;margin-bottom:8px"><input id="d-name" placeholder="Folder name"/><input id="d-imei" placeholder="IMEI"/></div>
+        <div style="display:flex;gap:8px;margin-bottom:8px"><input id="d-sim" placeholder="SIM"/><select id="d-proto"><option>GT06</option><option>Teltonika</option><option>Concox</option></select></div>
+        <div style="display:flex;gap:8px;margin-bottom:8px"><input id="d-lat" placeholder="Latitude"/><input id="d-lon" placeholder="Longitude"/></div>
+        <div style="display:flex;gap:8px;margin-bottom:8px"><input id="d-heading" placeholder="Heading"/><input id="d-alt" placeholder="Altitude"/></div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px"><button class="btn" id="cancel">Cancel</button><button class="btn primary" id="save">Save</button></div>
+    </div>
+  </div>
+  <div class="toasts" id="toasts"></div>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    // preserve RM_CONFIG and fetch shim (if absent)
+    if(!window.RM_CONFIG){ const h = location.hostname; window.RM_CONFIG = { apiBase: (h==='localhost'||h==='127.0.0.1')? 'http://localhost:8080' : 'https://rm-telematics-suite.web.app' }; }
+    const saved = localStorage.getItem('rm_api_base'); if(saved) window.RM_CONFIG.apiBase = saved;
+    (function(){ if(window.fetch && window.RM_CONFIG && window.RM_CONFIG.apiBase){ const _old = window.fetch.bind(window); window.fetch = function(input, init){ try{ const url = (typeof input==='string')? input : (input&&input.url)||''; if(url && url.indexOf('/api')===0){ const newUrl = window.RM_CONFIG.apiBase.replace(/\/$/,'') + url; if(typeof input==='string') return _old(newUrl, init); return _old(new Request(newUrl, input)); } }catch(e){} return _old(input, init); }; }})();
+
+    const apiBase = () => (window.RM_CONFIG && window.RM_CONFIG.apiBase) ? window.RM_CONFIG.apiBase.replace(/\/$/, '') : '';
+    async function api(path, opts){ const base = apiBase(); return fetch((base? base:'')+path, opts); }
+    async function apiJSON(path, opts){ const r = await api(path, opts); if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); }
+    function toast(msg, t=3000){ const el=document.createElement('div'); el.className='toast'; el.textContent=msg; document.getElementById('toasts').appendChild(el); setTimeout(()=>{ el.style.opacity='0'; setTimeout(()=>el.remove(),240); }, t); }
+
+    // UI refs
+    const nav=document.getElementById('nav'); const tabs=document.querySelectorAll('.tab'); const lastUpdated=document.getElementById('last-updated'); const deviceCount=document.getElementById('device-count'); const totalEl=document.getElementById('total'); const activeEl=document.getElementById('active'); const alertsEl=document.getElementById('alerts'); const rowsEl=document.getElementById('rows'); const searchEl=document.getElementById('search'); const drawer=document.getElementById('drawer'); const addBtn=document.getElementById('add'); const saveBtn=document.getElementById('save'); const cancelBtn=document.getElementById('cancel'); const smsSend=document.getElementById('sms-send'); const smsList=document.getElementById('sms-list'); const smsResp=document.getElementById('sms-response'); const monitorEl=document.getElementById('monitor'); const apiBaseEl=document.getElementById('api-base'); const editApi=document.getElementById('edit-api');
+
+    nav.addEventListener('click', e=>{ const b=e.target.closest('button'); if(!b) return; nav.querySelectorAll('button').forEach(x=>x.classList.remove('active')); b.classList.add('active'); const t=b.dataset.tab; tabs.forEach(tp=>tp.style.display = tp.id===('tab-'+t) ? '' : 'none'); });
+
+    function setClock(){ lastUpdated.textContent = 'Last updated: '+new Date().toLocaleTimeString(); } setInterval(setClock,1000); setClock();
+
+    // map init
+    let map = L.map('map'); L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap contributors'}).addTo(map); map.setView([28.6139,77.2090],5);
+    const markers = new Map(); let devices = [];
+    function color(d){ if(!d.online) return '#8a8d90'; if(d.ignition && d.speed>0) return '#2ea44f'; if(d.ignition) return '#ffb84d'; return '#8a8d90'; }
+    function ensureMarker(d){ const lat = d.lat||d.latitude||d.start_lat; const lng = d.lng||d.longitude||d.start_lon; if(!lat||!lng) return; const key=d.imei; const col=color(d); if(markers.has(key)){ const m=markers.get(key); m.setLatLng([lat,lng]); m.setStyle({color:col,fillColor:col}); m.getPopup().setContent(popup(d)); return; } const m = L.circleMarker([lat,lng],{radius:8,color:col,fillColor:col,fillOpacity:0.9}).addTo(map); m.bindPopup(popup(d)); markers.set(key,m); }
+    function popup(d){ return `<div style="min-width:180px"><div><strong>IMEI:</strong> ${d.imei}</div><div><strong>Speed:</strong> ${typeof d.speed==='number'?d.speed.toFixed(1):'N/A'} km/h</div><div style="margin-top:8px"><button class='btn' onclick="action('${d.imei}','start')">Start</button> <button class='btn' onclick="action('${d.imei}','stop')">Stop</button></div></div>`; }
+    window.action = async (imei,act)=>{ try{ await apiJSON('/api/device/'+act,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({imei})}); toast(act+' '+imei); await refresh(); }catch(e){ toast('Action failed'); } };
+
+    // render overlay rows
+    function renderRows(list){ rowsEl.innerHTML=''; list.forEach(d=>{ const el=document.createElement('div'); el.className='row'; el.innerHTML = `<div style="min-width:120px;font-weight:600">${d.imei}</div><div style="color:var(--muted);min-width:170px">${d.sim||'—'}</div><div style="min-width:120px">${(d.lat||'')?Number(d.lat).toFixed(4):'—'}, ${(d.lng||'')?Number(d.lng).toFixed(4):'—'}</div><div style="display:flex;gap:6px"><button class='btn' onclick="action('${d.imei}','start')">Start</button><button class='btn' onclick="action('${d.imei}','stop')">Stop</button><button class='btn' onclick="edit('${d.imei}')">Edit</button><button class='btn' onclick="del('${d.imei}')">Del</button></div>`; rowsEl.appendChild(el); }); apiBaseEl.textContent = apiBase(); }
+
+    searchEl.addEventListener('input', ()=>{ const q=searchEl.value.trim().toLowerCase(); const list = devices.filter(d=>!q || (d.imei+''+d.sim).toLowerCase().includes(q)); renderRows(list); });
+
+    // monitor    let monitor = [];
+    async function loadMonitor(){ try{ const r = await apiJSON('/api/monitor'); monitor = r.log||[]; monitorEl.innerHTML = ''; monitor.slice(-200).forEach(m=>{ const div=document.createElement('div'); div.textContent = m; monitorEl.appendChild(div); }); monitorEl.scrollTop = monitorEl.scrollHeight; }catch(e){} }
+
+    // refresh devices    let lastSnapshot = '';
+    async function refresh(){ try{ const devs = await apiJSON('/api/devices'); devices = devs||[]; const total = devices.length; const active = devices.filter(d=>d.ignition || d.active).length; const alerts = devices.filter(d=> (d.battery&&d.battery<15) || !d.gps).length; animate(totalEl,total); animate(activeEl,active); animate(alertsEl,alerts); deviceCount.textContent = total + ' devices'; lastUpdated.textContent = 'Last updated: '+new Date().toLocaleTimeString(); const bounds = []; devices.forEach(d=>{ ensureMarker(d); const lat=d.lat||d.latitude||d.start_lat; const lng=d.lng||d.longitude||d.start_lon; if(lat&&lng) bounds.push([lat,lng]); }); if(bounds.length){ const bb=L.latLngBounds(bounds); map.fitBounds(bb.pad(0.12)); } const snap = JSON.stringify(devices.map(d=>({imei:d.imei,lat:d.lat,lng:d.lng,speed:d.speed,ignition:d.ignition}))); if(lastSnapshot && lastSnapshot!==snap){ const children = rowsEl.children; for(const c of children){ c.classList.add('flash'); setTimeout(()=>c.classList.remove('flash'),700); } } lastSnapshot = snap; const q=searchEl.value.trim().toLowerCase(); renderRows( q ? devices.filter(d=> (d.imei+''+d.sim).toLowerCase().includes(q)) : devices ); }catch(e){ console.warn('refresh err',e); } }
+
+    function animate(el,to){ const from = parseInt(el.textContent)||0; const dur=350; const start=performance.now(); function step(now){ const p=Math.min(1,(now-start)/dur); const v=Math.round(from + (to-from)*p); el.textContent = v; if(p<1) requestAnimationFrame(step); } requestAnimationFrame(step); }
+
+    // add/edit/delete handlers    addBtn.addEventListener('click', ()=>{ document.getElementById('drawer-title').textContent='Add Device'; document.getElementById('d-name').value=''; document.getElementById('d-imei').value=''; document.getElementById('d-sim').value=''; document.getElementById('d-proto').value='GT06'; document.getElementById('d-lat').value='28.6139'; document.getElementById('d-lon').value='77.2090'; document.getElementById('d-heading').value='90'; document.getElementById('d-alt').value='100'; drawer.classList.add('open'); });
+    cancelBtn.addEventListener('click', ()=>drawer.classList.remove('open'));
+    saveBtn.addEventListener('click', async ()=>{ const imei=document.getElementById('d-imei').value.trim(); if(!imei){ toast('IMEI required'); return; } saveBtn.disabled=true; try{ const body = { name: document.getElementById('d-name').value||imei, imei, sim: document.getElementById('d-sim').value, protocol: document.getElementById('d-proto').value, start_lat: document.getElementById('d-lat').value, start_lon: document.getElementById('d-lon').value, start_heading: document.getElementById('d-heading').value, start_altitude: document.getElementById('d-alt').value }; await apiJSON('/api/device/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); drawer.classList.remove('open'); await refresh(); toast('Device added'); }catch(e){ toast('Add failed'); } finally{ saveBtn.disabled=false; } });
+    window.edit = function(imei){ const d=devices.find(x=>x.imei==imei); if(!d) return toast('Not found'); document.getElementById('drawer-title').textContent='Edit Device'; document.getElementById('d-name').value=d.name||''; document.getElementById('d-imei').value=d.imei; document.getElementById('d-sim').value=d.sim||''; document.getElementById('d-proto').value=d.protocol||'GT06'; document.getElementById('d-lat').value=d.lat||d.latitude||''; document.getElementById('d-lon').value=d.lng||d.longitude||''; document.getElementById('d-heading').value=d.heading||''; document.getElementById('d-alt').value=d.altitude||''; drawer.classList.add('open'); };
+    window.del = async function(imei){ if(!confirm('Delete '+imei+'?')) return; try{ await apiJSON('/api/device/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({imei})}); toast('Deleted'); await refresh(); }catch(e){ toast('Delete failed'); } };
+
+    // SMS    smsSend.addEventListener('click', async ()=>{ const sim=document.getElementById('sms-sim').value.trim(); const cmd=document.getElementById('sms-cmd').value.trim(); if(!sim||!cmd){ toast('SIM and command required'); return; } smsSend.disabled=true; const sp=document.createElement('span'); sp.className='spin'; smsSend.prepend(sp); try{ const r = await apiJSON('/api/sms',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sim,command:cmd})}); const resp = (r && (r.result || r.response)) ? (r.result||r.response) : JSON.stringify(r); smsResp.textContent = resp; smsList.insertAdjacentHTML('afterbegin', `<div style="padding:6px 4px;border-bottom:1px dashed rgba(255,255,255,0.02)"><small style="font-family:var(--mono)">[${new Date().toLocaleString()}] <strong>${sim}</strong>: ${cmd} → <em>${resp}</em></small></div>`); toast('SMS sent'); }catch(e){ toast('SMS failed'); } finally{ smsSend.disabled=false; if(sp.parentNode) sp.parentNode.removeChild(sp); } });
+
+    // settings edit API base    editApi.addEventListener('click', ()=>{ const cur = apiBase(); const v = prompt('API base URL', cur); if(v!==null){ window.RM_CONFIG.apiBase = v.trim(); localStorage.setItem('rm_api_base', window.RM_CONFIG.apiBase); apiBaseEl.textContent = window.RM_CONFIG.apiBase; toast('Saved'); } });
+
+    // polling    refresh(); loadMonitor(); setInterval(refresh,3000); setInterval(loadMonitor,3000);
+  </script>
+</body>
+</html>
+    </script>.stringify({sim,command:cmd})}); appendSms({sim,cmd,ts:new Date().toISOString(),resp:'sent'}); smsResponseEl.textContent = 'Sent — awaiting response'; setTimeout(()=>smsResponseEl.style.opacity=1,50); }catch(e){ toast('SMS failed: '+e.message); }finally{ smsBtn.disabled=false; if(sp.parentNode) sp.parentNode.removeChild(sp); }
+      });
+
+      const smsHistory = [];
+      function appendSms(obj){ smsHistory.unshift(obj); while(smsHistory.length>20) smsHistory.pop(); renderSmsHistory(); }
+      function renderSmsHistory(){ smsHistoryEl.innerHTML = ''; for(const s of smsHistory){ const div=document.createElement('div'); div.style.padding='6px 4px'; div.style.borderBottom='1px dashed rgba(255,255,255,0.02)'; div.innerHTML = `<div style="font-family:var(--mono);font-size:12px">[${new Date(s.ts).toLocaleString()}] <strong>${s.sim}</strong>: ${s.cmd} → <em>${s.resp||''}</em></div>`; smsHistoryEl.appendChild(div); } }
+
+      // monitor
+      let monitorEntries = [];
+      async function loadMonitor(){ try{ const r = await fetchJSON('/api/monitor'); monitorEntries = r.log || []; renderMonitor(); }catch(e){} }
+      function renderMonitor(){ monitorLogEl.innerHTML=''; const last = monitorEntries.slice(-500); last.forEach((m,i)=>{ const div=document.createElement('div'); div.className='entry'+(i<last.length-60?' old':''); div.textContent = m; monitorLogEl.appendChild(div); }); monitorLogEl.scrollTop = monitorLogEl.scrollHeight; }
+
+      document.getElementById('clear-monitor').addEventListener('click', async ()=>{ try{ await fetchJSON('/api/monitor/clear',{method:'POST'}); monitorEntries=[]; renderMonitor(); toast('Monitor cleared'); }catch(e){ toast('Clear failed'); } });
+
+      // refresh all
+      async function refreshAll(){ try{ const devs = await fetchJSON('/api/devices'); renderDevices(devs); await loadMonitor(); runtimeApiEl.textContent = apiBase||'(none)'; }catch(e){ console.error(e); } }
+
+      // polling
+      refreshAll(); setInterval(refreshAll,5000);
+      // initial monitor poll more frequent
+      setInterval(loadMonitor,3000);
+
+      // show runtime api
+      runtimeApiEl.textContent = apiBase||'(none)';
+
+      // expose helper for active threads (if server tracks)
+      window._threads = {};
+
+      // keyboard accessibility: Esc closes drawer
+      document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ closeDrawer(); } });
     </script>
-    <script type="module" crossorigin src="./assets/index-1s5cjT0B.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-YIZPVR1q.css">
-  </head>
-  <body>
-    <div id="root"></div>
   </body>
 </html>
