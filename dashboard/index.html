@@ -1,9 +1,31 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>My Google AI Studio App</title>
+    <title>RM Telematics Dashboard</title>
+    <script>
+      (function(){
+        var host = location.hostname;
+        window.RM_CONFIG = { apiBase: (host==='localhost' || host==='127.0.0.1') ? 'http://localhost:8080' : 'https://rm-telematics-suite.web.app' };
+        // Monkey-patch fetch so bundles that call '/api/...' still route to the configured API base when served from the static site
+        if (window.fetch && window.RM_CONFIG && window.RM_CONFIG.apiBase) {
+          var _oldFetch = window.fetch.bind(window);
+          window.fetch = function(input, init){
+            try{
+              var url = (typeof input === 'string') ? input : (input && input.url) || '';
+              if (url && url.indexOf('/api') === 0) {
+                var newUrl = window.RM_CONFIG.apiBase.replace(/\/$/, '') + url;
+                if (typeof input === 'string') return _oldFetch(newUrl, init);
+                var req = new Request(newUrl, input);
+                return _oldFetch(req);
+              }
+            }catch(e){ }
+            return _oldFetch(input, init);
+          };
+        }
+      })();
+    </script>
     <script type="module" crossorigin src="./assets/index-1s5cjT0B.js"></script>
     <link rel="stylesheet" crossorigin href="./assets/index-YIZPVR1q.css">
   </head>
@@ -11,4 +33,3 @@
     <div id="root"></div>
   </body>
 </html>
-
