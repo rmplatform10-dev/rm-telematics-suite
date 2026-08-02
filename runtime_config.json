@@ -1,0 +1,7 @@
+{
+  "dashboard_host": "",
+  "dashboard_port": 8080,
+  "gateway_host": "0.0.0.0",
+  "gateway_port": 5023,
+  "api_base": "http://localhost:8080"
+}
