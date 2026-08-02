@@ -26,6 +26,14 @@ devices = []
 device_by_imei = {}
 threads = {}
 
+# In-memory monitor log for SMS and state transitions
+monitor_log = []
+def add_monitor(entry):
+    ts = time.strftime('%Y-%m-%d %H:%M:%S')
+    monitor_log.append(f"[{ts}] {entry}")
+    if len(monitor_log) > 2000:
+        monitor_log.pop(0)
+
 
 def load_devices():
     global devices, device_by_imei
@@ -46,6 +54,11 @@ def load_devices():
                     cfg['state_file'] = os.path.join(full, "state.json")
                     cfg['device_id'] = len(devices) + 1
                     dev = device_core.GPSDevice(cfg)
+                    # attach monitor logger to device so protocol handlers can log
+                    try:
+                        setattr(dev, 'monitor', add_monitor)
+                    except Exception:
+                        pass
                     devices.append(dev)
                     device_by_imei[dev.imei] = dev
                 except Exception as e:
@@ -53,6 +66,12 @@ def load_devices():
 
 
 load_devices()
+
+# Register control callbacks with device_core so protocols can start/stop devices
+try:
+    device_core.register_control_callbacks(lambda i: start_device(i), lambda i: stop_device(i))
+except Exception:
+    pass
 
 
 def start_device(imei):
@@ -62,16 +81,24 @@ def start_device(imei):
         t = threading.Thread(target=dev.run, daemon=True)
         t.start()
         threads[imei] = t
+        add_monitor(f"Device {imei} started")
 
 
 def stop_device(imei):
-    if imei not in threads: return
+    # If thread not tracked, still mark offline
+    if imei not in threads:
+        dev = device_by_imei.get(imei)
+        if dev:
+            dev.online = False
+            add_monitor(f"Device {imei} marked offline (no running thread)")
+        return
     dev = device_by_imei.get(imei)
     if dev:
         dev.online = False
         if getattr(dev, 'protocol', None) and getattr(dev.protocol, 'sock', None):
             try: dev.protocol.sock.close()
             except Exception as e: print(f"Error stopping {imei}: {e}")
+        add_monitor(f"Device {imei} stopped")
     if imei in threads:
         del threads[imei]
 
@@ -133,6 +160,24 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
             self.wfile.write(json.dumps(data).encode())
             return
         elif parsed.path == '/api/status':
+            # also expose monitor size
+            self.send_response(200)
+            self.send_header('Content-Type','application/json')
+            self.end_headers()
+            status = {
+                'devices_total': len(devices),
+                'devices_active': len(threads),
+                'gateway_running': False,
+                'monitor_entries': len(monitor_log),
+            }
+            self.wfile.write(json.dumps(status).encode())
+            return
+        elif parsed.path == '/api/monitor':
+            self.send_response(200)
+            self.send_header('Content-Type','application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({'log': monitor_log[-200:]}).encode())
+            return
             self.send_response(200)
             self.send_header('Content-Type','application/json')
             self.end_headers()
@@ -189,31 +234,55 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
             return
         elif parsed.path == '/api/device/add':
             try:
-                name = data.get('name')
-                imei = data.get('imei')
-                sim = data.get('sim')
+                name = (data.get('name') or '').strip()
+                imei = (data.get('imei') or '').strip()
+                sim = (data.get('sim') or '').strip()
                 proto = data.get('protocol','GT06')
                 lat = float(data.get('start_lat',28.6139))
                 lon = float(data.get('start_lon',77.2090))
                 heading = int(data.get('start_heading',90))
                 alt = int(data.get('start_altitude',100))
-                folder = os.path.join(DEVICES_DIR, name)
+                if not imei:
+                    raise ValueError('IMEI is required')
+                # sanitize name
+                if not name:
+                    name = imei
+                safe_name = ''.join(c for c in name if c.isalnum() or c in ('-','_')).strip() or imei
+                folder = os.path.join(DEVICES_DIR, safe_name)
+                # ensure unique folder if exists
+                if os.path.exists(folder):
+                    i = 1
+                    while True:
+                        candidate = f"{safe_name}_{i}"
+                        folder = os.path.join(DEVICES_DIR, candidate)
+                        if not os.path.exists(folder):
+                            break
+                        i += 1
                 os.makedirs(folder, exist_ok=True)
+                # server defaults from runtime config
+                server_ip = RM_CONFIG.get('gateway_host','127.0.0.1') if isinstance(RM_CONFIG, dict) else '127.0.0.1'
+                server_port = int(RM_CONFIG.get('gateway_port',5023)) if isinstance(RM_CONFIG, dict) else 5023
                 cfg = {
                     "imei": imei, "sim": sim, "protocol": proto,
-                    "server_ip": "127.0.0.1", "server_port": 5023,
+                    "server_ip": server_ip, "server_port": server_port,
                     "start_lat": lat, "start_lon": lon,
                     "start_heading": heading, "start_altitude": alt,
                     "device_model": proto, "serial_number": f"S{os.urandom(3).hex().upper()}",
                     "iccid": "", "imsi": "", "external_power_voltage": 12.6, "route": []
                 }
-                with open(os.path.join(folder, "config.json"), "w") as f:
+                with open(os.path.join(folder, "config.json"), "w", encoding='utf-8') as f:
                     json.dump(cfg, f, indent=4)
                 load_devices()
+                add_monitor(f"Device added: {imei} ({safe_name})")
                 self.send_response(200)
                 self.send_header('Content-Type','application/json')
                 self.end_headers()
-                self.wfile.write(json.dumps({'result':'ok'}).encode())
+                # return the device entry so UI can show it immediately
+                dev = device_by_imei.get(imei)
+                if dev:
+                    self.wfile.write(json.dumps({'result':'ok','device':{'imei':dev.imei,'sim':dev.sim}}).encode())
+                else:
+                    self.wfile.write(json.dumps({'result':'ok'}).encode())
             except Exception as e:
                 self.send_response(400)
                 self.send_header('Content-Type','application/json')

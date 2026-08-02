@@ -5,6 +5,14 @@ from protocol_handler import ProtocolHandler
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE_DIR)
 
+start_device_cb = None
+stop_device_cb = None
+
+def register_control_callbacks(start_cb, stop_cb):
+    global start_device_cb, stop_device_cb
+    start_device_cb = start_cb
+    stop_device_cb = stop_cb
+
 def get_protocol_class(protocol_type):
     import importlib.util
     import sys
