@@ -1,0 +1,26 @@
+{
+    "start_lon":  80.2707,
+    "server_ip":  "127.0.0.1",
+    "imsi":  "",
+    "start_lat":  13.0827,
+    "server_port":  5023,
+    "start_heading":  45,
+    "external_power_voltage":  12.6,
+    "serial_number":  "S001004",
+    "sim":  "1111111114",
+    "device_model":  "GT06N",
+    "imei":  "111111111111111",
+    "protocol":  "Concox",
+    "start_altitude":  6,
+    "iccid":  "",
+    "route":  [
+                  {
+                      "lat":  13.0827,
+                      "lon":  80.2707
+                  },
+                  {
+                      "lat":  12.9716,
+                      "lon":  77.5946
+                  }
+              ]
+}

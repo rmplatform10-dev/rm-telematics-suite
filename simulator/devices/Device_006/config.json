@@ -1,0 +1,26 @@
+{
+    "start_lon":  78.4867,
+    "server_ip":  "127.0.0.1",
+    "imsi":  "",
+    "start_lat":  17.385,
+    "server_port":  5023,
+    "start_heading":  180,
+    "external_power_voltage":  12.6,
+    "serial_number":  "S001006",
+    "sim":  "1111111116",
+    "device_model":  "GL300",
+    "imei":  "333333333333333",
+    "protocol":  "Queclink",
+    "start_altitude":  536,
+    "iccid":  "",
+    "route":  [
+                  {
+                      "lat":  17.385,
+                      "lon":  78.4867
+                  },
+                  {
+                      "lat":  19.076,
+                      "lon":  72.8777
+                  }
+              ]
+}

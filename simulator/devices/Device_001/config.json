@@ -1,0 +1,30 @@
+{
+    "imei": "123456789012345",
+    "sim": "1111111111",
+    "protocol": "GT06",
+    "server_ip": "127.0.0.1",
+    "server_port": 5023,
+    "start_lat": 28.6139,
+    "start_lon": 77.209,
+    "start_heading": 90,
+    "start_altitude": 215,
+    "route": [
+        {
+            "lat": 28.6139,
+            "lon": 77.209
+        },
+        {
+            "lat": 26.9124,
+            "lon": 75.7873
+        },
+        {
+            "lat": 19.076,
+            "lon": 72.8777
+        }
+    ],
+    "device_model": "GT06",
+    "serial_number": "S123456",
+    "iccid": "",
+    "imsi": "",
+    "external_power_voltage": 12.6
+}

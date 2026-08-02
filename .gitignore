@@ -1,0 +1,29 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# Node
+node_modules/
+npm-debug.log
+
+# React/SPA build assets (optional)
+/dashboard/assets/
+
+# Archives and temp
+/archive/
+*.log
+*.tmp
+*.bak
+
+# OS generated files
+Thumbs.db
+.DS_Store
+
+# IDE
+.vscode/

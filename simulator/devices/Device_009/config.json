@@ -1,0 +1,17 @@
+{
+    "imei": "666666666666666",
+    "sim": "1111111119",
+    "protocol": "Ruptela",
+    "server_ip": "127.0.0.1",
+    "server_port": 5023,
+    "start_lat": 22.2587,
+    "start_lon": 71.1924,
+    "start_heading": 45,
+    "start_altitude": 100,
+    "device_model": "FM-Pro",
+    "serial_number": "S001009",
+    "iccid": "",
+    "imsi": "",
+    "external_power_voltage": 12.6,
+    "route": []
+}
