@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Logs
 logs
 *.log
@@ -67,3 +68,34 @@ node_modules/
 
 # dataconnect generated files
 .dataconnect
+=======
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# Node
+node_modules/
+npm-debug.log
+
+# React/SPA build assets (optional)
+/dashboard/assets/
+
+# Archives and temp
+/archive/
+*.log
+*.tmp
+*.bak
+
+# OS generated files
+Thumbs.db
+.DS_Store
+
+# IDE
+.vscode/
+>>>>>>> c0fe9f2 (chore: deep upgrade — portable dashboard, cleanup/deploy helpers, .gitignore and small runtime config\n\nCo-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>)

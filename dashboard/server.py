@@ -129,6 +129,18 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
             self.wfile.write(json.dumps(status).encode())
             return
         # Serve static files; fallback to index.html for SPA
+<<<<<<< HEAD
+=======
+        # Also serve a small runtime config for front-end bundles that request /config
+        if parsed.path == '/config':
+            self.send_response(200)
+            self.send_header('Content-Type','application/json')
+            self.send_header('Access-Control-Allow-Origin','*')
+            self.end_headers()
+            cfg = {'apiBase': 'http://localhost:8080'}
+            self.wfile.write(json.dumps(cfg).encode())
+            return
+>>>>>>> c0fe9f2 (chore: deep upgrade — portable dashboard, cleanup/deploy helpers, .gitignore and small runtime config\n\nCo-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>)
         path = self.translate_path(parsed.path)
         if not os.path.exists(path) or os.path.isdir(path):
             self.path = '/index.html'
@@ -235,6 +247,12 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
 
 if __name__ == '__main__':
     print("Dashboard server starting at http://localhost:8080")
+<<<<<<< HEAD
+=======
+print(f"Serving files from {BASE_DIR}")
+# Provide a simple runtime config endpoint for the SPA to consume (optional)
+
+>>>>>>> c0fe9f2 (chore: deep upgrade — portable dashboard, cleanup/deploy helpers, .gitignore and small runtime config\n\nCo-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>)
     httpd = http.server.HTTPServer(('', 8080), DashboardHandler)
     try:
         httpd.serve_forever()
